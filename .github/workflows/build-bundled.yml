@@ -1,0 +1,98 @@
+name: Build bundled APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/build-bundled.yml"
+      - "FCL/src/main/java/com/tungsten/fcl/util/PayloadInstaller.kt"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      BUNDLED_KEYSTORE: ${{ github.workspace }}/bundled-key.jks
+      BUNDLED_KEYSTORE_PASSWORD: ${{ secrets.BUNDLED_KEYSTORE_PASSWORD }}
+      BUNDLED_KEY_ALIAS: ${{ secrets.BUNDLED_KEY_ALIAS }}
+      BUNDLED_KEY_PASSWORD: ${{ secrets.BUNDLED_KEY_PASSWORD }}
+    steps:
+      - name: Checkout launcher fork
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          submodules: recursive
+
+      - name: Checkout modpack manifests
+        uses: actions/checkout@v7
+        with:
+          repository: zhyiheihei/rebirth-isekai-modpack
+          path: modpack
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 17
+          cache: gradle
+
+      - name: Restore modpack cache
+        uses: actions/cache@v4
+        with:
+          path: modpack/cache
+          key: modpack-${{ hashFiles('modpack/pack/*.json') }}
+          restore-keys: modpack-
+
+      - name: Fetch modpack files
+        working-directory: modpack
+        run: python3 scripts/fetch.py
+
+      - name: Build payload
+        working-directory: modpack
+        run: python3 scripts/build_android_payload.py
+
+      - name: Inject payload into APK assets
+        run: |
+          mkdir -p FCL/src/main/assets
+          cp modpack/cache/android/payload.zip FCL/src/main/assets/payload.zip
+          cp modpack/cache/android/payload/payload.properties FCL/src/main/assets/payload.properties
+          ls -lh FCL/src/main/assets/
+
+      - name: Prepare signing key
+        run: |
+          echo "${{ secrets.BUNDLED_KEYSTORE_B64 }}" | base64 -d > bundled-key.jks
+          keytool -list -keystore bundled-key.jks -storepass "$BUNDLED_KEYSTORE_PASSWORD" | tail -3
+
+      - name: Build bundled apk
+        run: |
+          chmod +x gradlew
+          ./gradlew assemblebundled -Darch=arm64 --no-daemon
+
+      - name: Collect apk
+        run: |
+          mkdir -p out
+          find FCL/build/outputs/apk/bundled -name "*.apk" -exec cp {} out/ \;
+          ls -lh out/
+          sha256sum out/*.apk
+
+      - name: Upload apk
+        uses: actions/upload-artifact@v6
+        with:
+          name: bundled-arm64
+          path: out/*.apk
+          compression-level: 0
+
+      - name: Publish to release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: bundled
+          name: Bundled Android build
+          body: |
+            自带 Minecraft 素材、运行库与整合包的 Android 客户端（arm64-v8a）。
+            安装后首次打开会自动释放游戏文件，之后启动不再下载任何资源。
+          files: out/*.apk
+          overwrite_files: true
+          fail_on_unmatched_files: true

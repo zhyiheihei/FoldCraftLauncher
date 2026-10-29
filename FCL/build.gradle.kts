@@ -64,6 +64,15 @@ android {
             keyAlias = "FCL-Debug"
             keyPassword = "FCL-Debug"
         }
+        // 自带整合包的分发构建：用本项目自己的签名（CI 注入），本地无签名材料时退回 debug key
+        create("BundledKey") {
+            val store = System.getenv("BUNDLED_KEYSTORE") ?: "../debug-key.jks"
+            val fallback = System.getenv("BUNDLED_KEYSTORE") == null
+            storeFile = file(store)
+            storePassword = if (fallback) "FCL-Debug" else System.getenv("BUNDLED_KEYSTORE_PASSWORD")
+            keyAlias = if (fallback) "FCL-Debug" else System.getenv("BUNDLED_KEY_ALIAS")
+            keyPassword = if (fallback) "FCL-Debug" else System.getenv("BUNDLED_KEY_PASSWORD")
+        }
         // minSdk 26 ≥ 24，v1 已无必要，统一启用 v2 + v3 签名方案
         configureEach {
             enableV1Signing = false
@@ -103,6 +112,12 @@ android {
             signingConfig = signingConfigs.getByName("FCLDebugKey")
             // 与 FileProvider authority（${applicationId}.provider）保持一致（原 FCLLibrary 模块的 resValue）
             resValue("string", "file_browser_provider", "com.tungsten.fcl.debug.provider")
+        }
+        // 自带整合包的分发构建：不可调试、不混淆、用本项目自己的签名
+        create("bundled") {
+            initWith(getByName("release"))
+            isMinifyEnabled = false
+            signingConfig = signingConfigs.getByName("BundledKey")
         }
         configureEach {
             resValue("string", "app_version", defaultConfig.versionName.toString())
