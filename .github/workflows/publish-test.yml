@@ -26,5 +26,5 @@ jobs:
         with:
           tag_name: p1-test
           name: P1 test build
-          files: apk/*.apk
+          files: apk/**/*.apk
           fail_on_unmatched_files: true
