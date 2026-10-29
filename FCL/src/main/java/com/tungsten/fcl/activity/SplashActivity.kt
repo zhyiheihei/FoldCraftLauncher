@@ -5,11 +5,15 @@ import android.annotation.SuppressLint
 import android.content.Intent
 import android.content.SharedPreferences
 import android.content.pm.PackageManager
+import android.graphics.Color
 import android.os.Build
 import android.os.Bundle
 import android.os.Environment
 import android.provider.Settings
+import android.view.Gravity
+import android.widget.TextView
 import android.widget.Toast
+import androidx.constraintlayout.widget.ConstraintLayout
 import androidx.core.app.ActivityCompat
 import androidx.core.app.ActivityOptionsCompat
 import androidx.core.content.ContextCompat
@@ -29,6 +33,7 @@ import com.tungsten.fcl.fragment.RuntimeFragment
 import com.tungsten.fcl.setting.ConfigHolder
 import com.tungsten.fcl.setting.Controllers
 import com.tungsten.fcl.util.LegalAgreement
+import com.tungsten.fcl.util.PayloadInstaller
 import com.tungsten.fcl.util.RuntimeUtils
 import com.tungsten.fclauncher.utils.FCLPath
 import com.tungsten.fclcore.util.Logging
@@ -128,6 +133,7 @@ class SplashActivity : FCLActivity() {
                 FCLPath.loadPaths(this@SplashActivity)
                 Logging.start(Paths.get(FCLPath.LOG_DIR))
                 initState()
+                installPayloadIfNeeded()
             }.await()
             if (lwjgl && cacio && cacio17 && java8 && java17 && java21 && java25 && jna) {
                 enterLauncher()
@@ -164,6 +170,10 @@ class SplashActivity : FCLActivity() {
                         putLong("clear_cache", System.currentTimeMillis())
                     }
                 }
+                // 随包分发的整合包：补上默认离线账号与选中版本，玩家打开即可直接启动
+                runCatching { PayloadInstaller.applyDefaults(this@SplashActivity) }
+                    .exceptionOrNull()
+                    ?.let { Logging.LOG.log(Level.WARNING, it.message) }
             }
             startActivity(
                 handleModpack(Intent(this@SplashActivity, MainActivity::class.java)),
@@ -195,6 +205,44 @@ class SplashActivity : FCLActivity() {
             }
         }
         return newIntent
+    }
+
+    /** 首次启动时把 APK 内置的游戏文件（素材/运行库/整合包）释放到共享目录。 */
+    private fun installPayloadIfNeeded() {
+        if (!PayloadInstaller.needsInstall(this)) return
+        Logging.LOG.log(Level.INFO, "Installing bundled payload into ${FCLPath.SHARED_COMMON_DIR}")
+        runOnUiThread { showPayloadHint("首次启动：正在释放游戏文件…") }
+        try {
+            PayloadInstaller.install(this) { done, _, total ->
+                val percent = if (total > 0) (done * 100 / total).toInt() else 0
+                runOnUiThread { showPayloadHint("首次启动：正在释放游戏文件 $percent%") }
+            }
+            Logging.LOG.log(Level.INFO, "Bundled payload installed")
+        } catch (e: Exception) {
+            Logging.LOG.log(Level.WARNING, "Failed to install bundled payload: ${e.message}")
+            runOnUiThread { showPayloadHint("游戏文件释放失败：${e.message}") }
+        } finally {
+            runOnUiThread { payloadHint?.text = "" }
+        }
+    }
+
+    private var payloadHint: TextView? = null
+
+    private fun showPayloadHint(text: String) {
+        val hint = payloadHint ?: TextView(this).apply {
+            setTextColor(Color.WHITE)
+            textSize = 16f
+            gravity = Gravity.CENTER
+            val lp = ConstraintLayout.LayoutParams(
+                ConstraintLayout.LayoutParams.MATCH_PARENT,
+                ConstraintLayout.LayoutParams.WRAP_CONTENT
+            )
+            lp.topToTop = ConstraintLayout.LayoutParams.PARENT_ID
+            lp.bottomToBottom = ConstraintLayout.LayoutParams.PARENT_ID
+            binding.root.addView(this, lp)
+            payloadHint = this
+        }
+        hint.text = text
     }
 
     private fun requestPermission() {

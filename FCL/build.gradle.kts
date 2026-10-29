@@ -127,6 +127,11 @@ android {
         }
     }
 
+    // 内置载荷本身是 zip，不要再被 aapt 二次压缩，否则安装时解压耗时翻倍
+    androidResources {
+        noCompress += listOf("zip")
+    }
+
     buildFeatures {
         viewBinding = true
         buildConfig = true
