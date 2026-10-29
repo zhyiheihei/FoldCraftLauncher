@@ -1,0 +1,30 @@
+name: Publish test APK
+
+on:
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: "Build run id to pull the artifact from"
+        required: true
+        type: string
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download artifact from build run
+        uses: actions/download-artifact@v6
+        with:
+          run-id: ${{ inputs.run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          name: app-arm64
+          path: apk
+      - name: Show files
+        run: ls -la apk/
+      - name: Attach to rolling release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: p1-test
+          name: P1 test build
+          files: apk/*.apk
+          fail_on_unmatched_files: true
