@@ -134,6 +134,7 @@ class SplashActivity : FCLActivity() {
                 Logging.start(Paths.get(FCLPath.LOG_DIR))
                 initState()
                 installPayloadIfNeeded()
+                autoInstallRuntimes()
             }.await()
             if (lwjgl && cacio && cacio17 && java8 && java17 && java21 && java25 && jna) {
                 enterLauncher()
@@ -227,6 +228,57 @@ class SplashActivity : FCLActivity() {
     }
 
     private var payloadHint: TextView? = null
+
+    /**
+     * 随包分发的构建：运行环境已在 APK 里，缺什么就自动装什么，玩家不需要再点「安装/更新」。
+     * 上游原样构建（无载荷）不进入这段逻辑，仍走 RuntimeFragment 安装页。
+     */
+    private fun autoInstallRuntimes() {
+        if (!PayloadInstaller.hasPayload(this)) return
+        if (lwjgl && cacio && cacio17 && java8 && java17 && java21 && java25 && jna) return
+
+        val steps = ArrayList<Pair<String, () -> Unit>>()
+        if (!lwjgl) steps.add("LWJGL" to {
+            RuntimeUtils.install(this, FCLPath.LWJGL_DIR, "app_runtime/lwjgl", runtimeListener("LWJGL"))
+        })
+        if (!cacio) steps.add("Caciocavallo" to {
+            RuntimeUtils.install(this, FCLPath.CACIOCAVALLO_8_DIR, "app_runtime/caciocavallo", runtimeListener("Caciocavallo"))
+        })
+        if (!cacio17) steps.add("Caciocavallo 17" to {
+            RuntimeUtils.install(this, FCLPath.CACIOCAVALLO_17_DIR, "app_runtime/caciocavallo17", runtimeListener("Caciocavallo 17"))
+        })
+        if (!java8) steps.add("Java 8" to {
+            RuntimeUtils.installJava(this, FCLPath.JAVA_8_PATH, "app_runtime/java/jre8", runtimeListener("Java 8"))
+        })
+        if (!java17) steps.add("Java 17" to {
+            RuntimeUtils.installJava(this, FCLPath.JAVA_17_PATH, "app_runtime/java/jre17", runtimeListener("Java 17"))
+        })
+        if (!java21) steps.add("Java 21" to {
+            RuntimeUtils.installJava(this, FCLPath.JAVA_21_PATH, "app_runtime/java/jre21", runtimeListener("Java 21"))
+        })
+        if (!java25) steps.add("Java 25" to {
+            RuntimeUtils.installJava(this, FCLPath.JAVA_25_PATH, "app_runtime/java/jre25", runtimeListener("Java 25"))
+        })
+        if (!jna) steps.add("JNA" to {
+            RuntimeUtils.installJna(this, FCLPath.JNA_PATH, "app_runtime/jna", runtimeListener("JNA"))
+        })
+
+        steps.forEachIndexed { index, (name, action) ->
+            runOnUiThread { showPayloadHint("首次启动：安装运行环境 ${index + 1}/${steps.size}（$name）") }
+            runCatching { action() }
+                .onFailure { Logging.LOG.log(Level.WARNING, "runtime $name: ${it.message}") }
+        }
+        runOnUiThread { showPayloadHint("") }
+        initState()
+    }
+
+    private fun runtimeListener(label: String) = object : RuntimeUtils.InstallListener {
+        override fun onUpdate(detail: String) {
+            runOnUiThread { showPayloadHint("首次启动：安装运行环境 $label\n$detail") }
+        }
+
+        override fun onStage(resId: Int) {}
+    }
 
     private fun showPayloadHint(text: String) {
         val hint = payloadHint ?: TextView(this).apply {
