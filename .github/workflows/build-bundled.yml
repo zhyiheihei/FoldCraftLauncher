@@ -69,12 +69,12 @@ jobs:
       - name: Build bundled apk
         run: |
           chmod +x gradlew
-          ./gradlew assemblebundled -Darch=arm64 --no-daemon
+          ./gradlew assemblerelease -Darch=arm64 --no-daemon
 
       - name: Collect apk
         run: |
           mkdir -p out
-          find FCL/build/outputs/apk/bundled -name "*.apk" -exec cp {} out/ \;
+          find FCL/build/outputs/apk/release -name "*.apk" -exec cp {} out/ \;
           ls -lh out/
           sha256sum out/*.apk
 

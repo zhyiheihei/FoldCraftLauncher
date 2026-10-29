@@ -53,25 +53,18 @@ android {
 
     signingConfigs {
         create("FCLKey") {
-            storeFile = file("../key-store.jks")
-            storePassword = pwd
-            keyAlias = "FCL-Key"
-            keyPassword = pwd
+            // CI 注入 BUNDLED_KEYSTORE 时用本项目自己的签名，否则沿用上游密钥
+            val custom = System.getenv("BUNDLED_KEYSTORE")
+            storeFile = file(custom ?: "../key-store.jks")
+            storePassword = if (custom == null) pwd else System.getenv("BUNDLED_KEYSTORE_PASSWORD")
+            keyAlias = if (custom == null) "FCL-Key" else System.getenv("BUNDLED_KEY_ALIAS")
+            keyPassword = if (custom == null) pwd else System.getenv("BUNDLED_KEY_PASSWORD")
         }
         create("FCLDebugKey") {
             storeFile = file("../debug-key.jks")
             storePassword = "FCL-Debug"
             keyAlias = "FCL-Debug"
             keyPassword = "FCL-Debug"
-        }
-        // 自带整合包的分发构建：用本项目自己的签名（CI 注入），本地无签名材料时退回 debug key
-        create("BundledKey") {
-            val store = System.getenv("BUNDLED_KEYSTORE") ?: "../debug-key.jks"
-            val fallback = System.getenv("BUNDLED_KEYSTORE") == null
-            storeFile = file(store)
-            storePassword = if (fallback) "FCL-Debug" else System.getenv("BUNDLED_KEYSTORE_PASSWORD")
-            keyAlias = if (fallback) "FCL-Debug" else System.getenv("BUNDLED_KEY_ALIAS")
-            keyPassword = if (fallback) "FCL-Debug" else System.getenv("BUNDLED_KEY_PASSWORD")
         }
         // minSdk 26 ≥ 24，v1 已无必要，统一启用 v2 + v3 签名方案
         configureEach {
@@ -112,12 +105,6 @@ android {
             signingConfig = signingConfigs.getByName("FCLDebugKey")
             // 与 FileProvider authority（${applicationId}.provider）保持一致（原 FCLLibrary 模块的 resValue）
             resValue("string", "file_browser_provider", "com.tungsten.fcl.debug.provider")
-        }
-        // 自带整合包的分发构建：不可调试、不混淆、用本项目自己的签名
-        create("bundled") {
-            initWith(getByName("release"))
-            isMinifyEnabled = false
-            signingConfig = signingConfigs.getByName("BundledKey")
         }
         configureEach {
             resValue("string", "app_version", defaultConfig.versionName.toString())
