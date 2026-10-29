@@ -9,6 +9,10 @@ on:
       - ".github/workflows/build-bundled.yml"
       - "FCL/src/main/java/com/tungsten/fcl/util/PayloadInstaller.kt"
 
+concurrency:
+  group: bundled-apk
+  cancel-in-progress: true
+
 jobs:
   build:
     runs-on: ubuntu-latest
